@@ -178,9 +178,6 @@ func (w Website) crawl() {
 		depth++
 	}
 
-	close(urlList)
-	close(sem)
-
 }
 
 func main() {
