@@ -145,6 +145,7 @@ func (w Website) crawl() {
 		firstList, err := extractLinksFromURL(rootURL)
 		if err != nil {
 			log.Fatalln(err)
+			urlList <- []string{}
 			return
 		}
 		urlList <- firstList
@@ -154,14 +155,20 @@ func (w Website) crawl() {
 
 	for ; n > 0; n-- {
 
-		if depth-1 == w.depth {
+		if depth == w.depth {
+			for n > 0 {
+				<-urlList
+				n--
+			}
 			break
 		}
 
 		// send the parent list first
 		parentList := <-urlList
+
 		// process parent list
 		for _, val := range parentList {
+
 			// add to childlist
 			if !seen[val] {
 				seen[val] = true
@@ -169,6 +176,7 @@ func (w Website) crawl() {
 				go func(val string) {
 					childList, err := extractLinksFromURL(val)
 					if err != nil {
+						urlList <- []string{}
 						return
 					}
 					urlList <- childList
