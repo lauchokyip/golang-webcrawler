@@ -11,7 +11,7 @@ import (
 )
 
 var sem = make(chan struct{}, 30)
-var depth = flag.Int("depth", 10, "the depth of the websites we want to crawl")
+var maxDepth = flag.Int("depth", 2, "the maximum depth of the websites we want to crawl")
 
 // type Node struct {
 // 	Parent, FirstChild, LastChild, PrevSibling, NextSibling *Node
@@ -43,8 +43,8 @@ var depth = flag.Int("depth", 10, "the depth of the websites we want to crawl")
 // )
 
 type Website struct {
-	URL   string
-	depth int
+	URLlist []string
+	depth   int
 }
 
 // Just for testing
@@ -134,56 +134,47 @@ func extractLinksFromURL(url string) ([]string, error) {
 
 // Has to use channel to communicate between go routine
 // Using BFS to crawl
-func (w Website) crawl() {
+func (w *Website) crawl() {
 
-	rootURL := w.URL
-	urlList := make(chan []string)
-	depth, n := 0, 0
+	rootURL := w.URLlist[0]
+	urlList := make(chan Website)
+	n := 0
 
 	n++
 	go func() {
 		firstList, err := extractLinksFromURL(rootURL)
 		if err != nil {
 			log.Fatalln(err)
-			urlList <- []string{}
+			urlList <- Website{[]string{}, *maxDepth + 1}
 			return
 		}
-		urlList <- firstList
+		urlList <- Website{firstList, w.depth + 1}
 	}()
 
 	seen := make(map[string]bool)
-
 	for ; n > 0; n-- {
-
-		if depth == w.depth {
-			for n > 0 {
-				<-urlList
-				n--
-			}
-			break
-		}
-
-		// send the parent list first
-		parentList := <-urlList
-
-		// process parent list
-		for _, val := range parentList {
-
-			// add to childlist
-			if !seen[val] {
-				seen[val] = true
-				n++
-				go func(val string) {
-					childList, err := extractLinksFromURL(val)
-					if err != nil {
-						urlList <- []string{}
-						return
-					}
-					urlList <- childList
-				}(val)
+		parentWebsite := <-urlList
+		//only spawn goroutine if the depth is smaller
+		if parentWebsite.depth <= *maxDepth {
+			// process parent list
+			for _, val := range parentWebsite.URLlist {
+				// add to childlist
+				if !seen[val] {
+					seen[val] = true
+					n++
+					go func(val string, innerDepth int) {
+						childList, err := extractLinksFromURL(val)
+						fmt.Println(innerDepth)
+						if err != nil {
+							urlList <- Website{[]string{}, *maxDepth + 1}
+							fmt.Println(err)
+							return
+						}
+						urlList <- Website{childList, innerDepth + 1}
+					}(val, parentWebsite.depth)
+				}
 			}
 		}
-		depth++
 	}
 
 }
@@ -196,9 +187,9 @@ func main() {
 		fmt.Println(flag.Args())
 		log.Fatal("Please insert a valid url go run -depth=[depth] [url]")
 	}
-	targetWebsite := Website{
-		URL:   flag.Args()[0],
-		depth: *depth,
+	targetWebsite := &Website{
+		URLlist: []string{flag.Args()[0]},
+		depth:   0,
 	}
 	targetWebsite.crawl()
 
